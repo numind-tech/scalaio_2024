@@ -203,10 +203,8 @@ object Training extends App {
     model.close()
 
     val reloaded = Model.newInstance("reloaded")
-    Files.copy(Path.of(outputDir).resolve("AmazonReviewRatingClassification-0002.params"),Path.of(outputDir).resolve("model.pt") )
-    //reloaded.setBlock(new SequentialBlock())
-    // reloaded.load(Path.of(outputDir), "AmazonReviewRatingClassification", Map("epoch" -> epochs.toString).asJava)
-    reloaded.load(Path.of(outputDir))
+    reloaded.setBlock(classifier)
+    reloaded.load(Path.of(outputDir), "AmazonReviewRatingClassification", Map("epoch" -> epochs.toString).asJava)
 
     val predictor = reloaded.newPredictor(translator)
     println(predictor.predict("Hello, scala.io").mkString("[", ",", "]"))
