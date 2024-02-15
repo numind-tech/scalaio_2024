@@ -116,34 +116,34 @@ object Training extends App {
     val trainingSet = datasets(0)
     val validationSet = datasets(1)
 
+    def createNewLayer(block: Block) = {
+        val classifier = new SequentialBlock()
+
+        val lambda = new LambdaBlock({ ndList =>
+        val data: NDArray = ndList.singletonOrThrow()
+        val inputs = new NDList()
+        inputs.add(data.toType(DataType.INT64, false))
+        inputs.add(data.getManager.full(data.getShape, 1, DataType.INT64))
+        inputs.add(
+            data.getManager.arange(data.getShape.get(1))
+            .toType(DataType.INT64, false)
+            .broadcast(data.getShape))
+        inputs
+        })
+
+        classifier.add(lambda)
+        classifier.add(block)
 
 
-    val classifier = new SequentialBlock()
+        classifier
+                        .add(Linear.builder().setUnits(768).build()) // pre classifier
+                        .add(Activation.relu(_: NDList))
+                        .add(Dropout.builder().optRate(0.2f).build())
+                        .add(Linear.builder().setUnits(5).build()) // 5 star rating
+                        .addSingleton(_.get(":,0")); // follow HF classifier
+    }
 
-    val lambda = new LambdaBlock({ ndList =>
-    val data: NDArray = ndList.singletonOrThrow()
-    val inputs = new NDList()
-    inputs.add(data.toType(DataType.INT64, false))
-    inputs.add(data.getManager.full(data.getShape, 1, DataType.INT64))
-    inputs.add(
-        data.getManager.arange(data.getShape.get(1))
-        .toType(DataType.INT64, false)
-        .broadcast(data.getShape))
-    inputs
-    })
-
-    classifier.add(lambda)
-    classifier.add(embedding.getBlock())
-
-
-    classifier
-                    .add(Linear.builder().setUnits(768).build()) // pre classifier
-                    .add(Activation.relu(_: NDList))
-                    .add(Dropout.builder().optRate(0.2f).build())
-                    .add(Linear.builder().setUnits(5).build()) // 5 star rating
-                    .addSingleton(_.get(":,0")); // follow HF classifier
-
-    model.setBlock(classifier)
+    model.setBlock(createNewLayer(embedding.getBlock()))
 
     val listener: SaveModelTrainingListener = new SaveModelTrainingListener(outputDir)
     listener.setSaveModelCallback { trainer => 
@@ -202,8 +202,19 @@ object Training extends App {
     t.close()
     model.close()
 
-    val reloaded = Model.newInstance("reloaded")
-    reloaded.setBlock(classifier)
+    val tmp = Criteria.builder()
+        .optApplication(Application.NLP.WORD_EMBEDDING)
+        .setTypes(classOf[NDList], classOf[NDList])
+        .optModelUrls(modelUrls)
+        .optEngine(Engine.getDefaultEngineName())
+        .optProgress(new ProgressBar())
+        .optOption("trainParam", "false")
+        .build()
+        .loadModel()
+
+    val reloaded = Model.newInstance("result")
+    reloaded.setBlock(createNewLayer(tmp.getBlock()))
+    tmp.close()
     reloaded.load(Path.of(outputDir), "AmazonReviewRatingClassification", Map("epoch" -> epochs.toString).asJava)
 
     val predictor = reloaded.newPredictor(translator)
