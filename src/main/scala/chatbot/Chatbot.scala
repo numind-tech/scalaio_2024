@@ -21,6 +21,7 @@ import scala.util.Using
 
 object Chatbot extends App {
 
+    val name = "LLM"
     val modelId = "TheBloke/Mistral-7B-Instruct-v0.2-GGUF";
     val quantMethod = "Q4_K_M";
     // val modelId = "TinyLlama/TinyLlama-1.1B-Chat-v0.6"
@@ -38,10 +39,10 @@ object Chatbot extends App {
                         .build();
 
     val system =
-                """|This is demo for DJL Llama.cpp engine.
+                s"""|This is demo for DJL Llama.cpp engine.
                    |
                    |
-                   |Llama: Hello.  How may I help you today?""".stripMargin
+                   |$name: Hello.  How may I help you today?""".stripMargin
 
 
     val param = new LlamaInput.Parameters();
@@ -66,8 +67,8 @@ object Chatbot extends App {
                     println("Goodbye!")
                     System.exit(0)
                 }
-                print("Llama: ");
-                prompt.append("\nUser: ").append(input).append("\nLlama: ");
+                print(s"$name: ");
+                prompt.append("\nUser: ").append(input).append(s"\n$name: ");
                 in.setInputs(prompt.toString());
                 val it = predictor.predict(in);
                 while (it.hasNext()) {

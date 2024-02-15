@@ -59,9 +59,6 @@ object Embeddings extends App {
   chooseBooks("Sentimental novel")
   chooseBooks("Future")
   chooseBooks("Love")
-  
-  println("Done")
-
 
   def creatCollection(): Unit = {
     Try {
