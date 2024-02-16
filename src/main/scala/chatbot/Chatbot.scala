@@ -22,8 +22,8 @@ import scala.util.Using
 object Chatbot extends App {
 
     val name = "LLM"
-    val modelId = "TheBloke/Mistral-7B-Instruct-v0.2-GGUF";
-    val quantMethod = "Q4_K_M";
+    val modelId = "TheBloke/Mistral-7B-Instruct-v0.2-GGUF"
+    val quantMethod = "Q4_K_M"
     // val modelId = "TinyLlama/TinyLlama-1.1B-Chat-v0.6"
     // val quantMethod = "Q4_0"
 
@@ -36,7 +36,7 @@ object Chatbot extends App {
                         .optOption("number_gpu_layers", "43")
                         .optTranslatorFactory(new LlamaTranslatorFactory())
                         .optProgress(new ProgressBar())
-                        .build();
+                        .build()
 
     val system =
                 s"""|This is demo for DJL Llama.cpp engine.
@@ -45,36 +45,36 @@ object Chatbot extends App {
                    |$name: Hello.  How may I help you today?""".stripMargin
 
 
-    val param = new LlamaInput.Parameters();
-        param.setTemperature(0.7f);
-        param.setPenalizeNl(true);
-        param.setMirostat(2);
-        param.setAntiPrompt(Array("User: "));
+    val param = new LlamaInput.Parameters()
+        param.setTemperature(0.7f)
+        param.setPenalizeNl(true)
+        param.setMirostat(2)
+        param.setAntiPrompt(Array("User: "))
 
-        val in = new LlamaInput();
-        in.setParameters(param);
+        val in = new LlamaInput()
+        in.setParameters(param)
 
-        val reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        val reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))
         Using.resource (criteria.loadModel()) { model =>
             Using.resource(model.newPredictor()) {predictor =>
-            System.out.print(system);
-            val prompt = new StringBuilder(system);
-            val exitWords = Set.of("exit", "bye", "quit");
+            System.out.print(system)
+            val prompt = new StringBuilder(system)
+            val exitWords = Set.of("exit", "bye", "quit")
             while (true) {
-                print("\nUser: ");
-                val input = reader.readLine().trim();
+                print("\nUser: ")
+                val input = reader.readLine().trim()
                 if (exitWords.contains(input.toLowerCase(Locale.ROOT))) {
                     println("Goodbye!")
                     System.exit(0)
                 }
-                print(s"$name: ");
-                prompt.append("\nUser: ").append(input).append(s"\n$name: ");
-                in.setInputs(prompt.toString());
-                val it = predictor.predict(in);
+                print(s"$name: ")
+                prompt.append("\nUser: ").append(input).append(s"\n$name: ")
+                in.setInputs(prompt.toString())
+                val it = predictor.predict(in)
                 while (it.hasNext()) {
-                    val token = it.next();
-                    print(token.getText());
-                    prompt.append(token.getText());
+                    val token = it.next()
+                    print(token.getText())
+                    prompt.append(token.getText())
                 }
             }
         }

@@ -55,14 +55,18 @@ object Training extends App {
     val outputDir: String = "target/models"
     val epochs = 2
     val batchSize = 32
-    val limit = 200 // Long.MaxValue
+    val limit = 200
 
     Files.createDirectories(Path.of(outputDir))
     Files.list(Path.of(outputDir)).forEach(Files.delete)
 
     val modelUrls = "https://resources.djl.ai/test-models/traced_distilbert_wikipedia_uncased.zip"
 
-    val criteria: Criteria[NDList, NDList] = Criteria.builder()
+    val maxTokenLenght = 64
+
+    val model: Model = Model.newInstance("AmazonReviewRatingClassification")
+
+    val embedding = Criteria.builder()
         .optApplication(Application.NLP.WORD_EMBEDDING)
         .setTypes(classOf[NDList], classOf[NDList])
         .optModelUrls(modelUrls)
@@ -70,25 +74,21 @@ object Training extends App {
         .optProgress(new ProgressBar())
         .optOption("trainParam", "true")
         .build()
-
-    val maxTokenLenght = 64
-
-    val model: Model = Model.newInstance("AmazonReviewRatingClassification")
-    val embedding = criteria.loadModel()
+        .loadModel()
 
     def createNewLayer(block: Block) = {
         val classifier = new SequentialBlock()
 
         val lambda = new LambdaBlock({ ndList =>
-        val data: NDArray = ndList.singletonOrThrow()
-        val inputs = new NDList()
-        inputs.add(data.toType(DataType.INT64, false))
-        inputs.add(data.getManager.full(data.getShape, 1, DataType.INT64))
-        inputs.add(
-            data.getManager.arange(data.getShape.get(1))
-            .toType(DataType.INT64, false)
-            .broadcast(data.getShape))
-        inputs
+            val data: NDArray = ndList.singletonOrThrow()
+            val inputs = new NDList()
+            inputs.add(data.toType(DataType.INT64, false))
+            inputs.add(data.getManager.full(data.getShape, 1, DataType.INT64))
+            inputs.add(
+                data.getManager.arange(data.getShape.get(1))
+                    .toType(DataType.INT64, false)
+                    .broadcast(data.getShape))
+            inputs
         })
 
         classifier.add(lambda)
@@ -100,7 +100,7 @@ object Training extends App {
             .add(Activation.relu(_: NDList))
             .add(Dropout.builder().optRate(0.2f).build())
             .add(Linear.builder().setUnits(5).build()) // 5 star rating
-            .addSingleton(_.get(":,0")); // follow HF classifier
+            .addSingleton(_.get(":,0")) // follow HF classifier
     }
 
     model.setBlock(createNewLayer(embedding.getBlock()))
@@ -109,41 +109,9 @@ object Training extends App {
         .addFromTextFile(embedding.getArtifact("vocab.txt"))
         .optUnknownToken("[UNK]").build()
 
-    val tokenizer = new BertFullTokenizer(vocabulary, true);
+    val tokenizer = new BertFullTokenizer(vocabulary, true)
 
-
-    class BertFeaturizer(tokenizer: BertFullTokenizer, maxLength: Int) extends DataFeaturizer {
-        override def featurize(buf: DynamicBuffer, input: String): Unit = {
-            val vocab = tokenizer.getVocabulary
-            var tokens = tokenizer.tokenize(input.toLowerCase(Locale.ENGLISH))
-            if (tokens.size > maxLength) {
-            tokens = tokens.subList(0, maxLength)
-            }
-            buf.put(vocab.getIndex("[CLS]"))
-            tokens.asScala.foreach(token => buf.put(vocab.getIndex(token)))
-            buf.put(vocab.getIndex("[SEP]"))
-        }
-    }
-
-    val amazonReview = "https://mlrepo.djl.ai/dataset/nlp/ai/djl/basicdataset/amazon_reviews/1.0/amazon_reviews_us_Digital_Software_v1_00.tsv.gz"
-    val paddingToken = tokenizer.getVocabulary().getIndex("[PAD]")
-    val featurizer = new BertFeaturizer(tokenizer, maxTokenLenght)
-    val amazonReviewDataset = CsvDataset.builder()
-        .optCsvUrl(amazonReview)
-        .setCsvFormat(CSVFormat.TDF.builder().setQuote(null).setHeader().build())
-        .setSampling(batchSize, true)
-        .addFeature(new Feature("review_body", featurizer))
-        .addLabel(new Feature("star_rating", (buf, data) => buf.put(data.toFloat - 1.0f)))
-        .optDataBatchifier(
-        PaddingStackBatchifier
-            .builder()
-            .optIncludeValidLengths(false)
-            .addPad(0, 0, (m: NDManager) => m.ones(new Shape(1)).mul(paddingToken))
-            .build()
-        ).optLimit(limit)
-        .build()
-
-    val datasets = amazonReviewDataset.randomSplit(70, 30)
+    val datasets = loadDataset().randomSplit(70, 30)
     val trainingSet = datasets(0)
     val validationSet = datasets(1)
 
@@ -168,7 +136,6 @@ object Training extends App {
         trainer.setMetrics(new Metrics())
         trainer.initialize(new Shape(batchSize, maxTokenLenght))
         EasyTrain.fit(trainer, epochs, trainingSet, validationSet)
-        trainer.getTrainingResult()
     }
 
 
@@ -185,7 +152,7 @@ object Training extends App {
             tokens.add(0, "[CLS]")
             tokens.add("[SEP]")
             val features = tokens.asScala.map(vocab.getIndex(_)).toArray
-            val  manager = ctx.getNDManager();
+            val  manager = ctx.getNDManager()
             new NDList(manager.create(features))
             
         }
@@ -228,4 +195,34 @@ object Training extends App {
     val predictor = reloaded.newPredictor(translator)
     println(predictor.predict("Hello, scala.io").mkString("[", ",", "]"))
 
+    def loadDataset() = {
+        val amazonReview = "https://mlrepo.djl.ai/dataset/nlp/ai/djl/basicdataset/amazon_reviews/1.0/amazon_reviews_us_Digital_Software_v1_00.tsv.gz"
+        val paddingToken = tokenizer.getVocabulary().getIndex("[PAD]")
+        val featurizer = new DataFeaturizer {
+            override def featurize(buf: DynamicBuffer, input: String): Unit = {
+                val vocab = tokenizer.getVocabulary
+                var tokens = tokenizer.tokenize(input.toLowerCase(Locale.ENGLISH))
+                if (tokens.size > maxTokenLenght) {
+                tokens = tokens.subList(0, maxTokenLenght)
+                }
+                buf.put(vocab.getIndex("[CLS]"))
+                tokens.asScala.foreach(token => buf.put(vocab.getIndex(token)))
+                buf.put(vocab.getIndex("[SEP]"))
+            }
+        }
+        CsvDataset.builder()
+            .optCsvUrl(amazonReview)
+            .setCsvFormat(CSVFormat.TDF.builder().setQuote(null).setHeader().build())
+            .setSampling(batchSize, true)
+            .addFeature(new Feature("review_body", featurizer))
+            .addLabel(new Feature("star_rating", (buf, data) => buf.put(data.toFloat - 1.0f)))
+            .optDataBatchifier(
+            PaddingStackBatchifier
+                .builder()
+                .optIncludeValidLengths(false)
+                .addPad(0, 0, (m: NDManager) => m.ones(new Shape(1)).mul(paddingToken))
+                .build()
+            ).optLimit(limit)
+            .build()
+    }
 }

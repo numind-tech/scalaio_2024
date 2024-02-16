@@ -3,9 +3,9 @@ package search
 import io.qdrant.client.*
 import io.qdrant.client.grpc.Collections.*
 import io.qdrant.client.grpc.Points.PointStruct
-import io.qdrant.client.PointIdFactory.id;
-import io.qdrant.client.ValueFactory.value;
-import io.qdrant.client.VectorsFactory.vectors;
+import io.qdrant.client.PointIdFactory.id
+import io.qdrant.client.ValueFactory.value
+import io.qdrant.client.VectorsFactory.vectors
 import scala.jdk.CollectionConverters.*
 import ai.djl.repository.zoo.Criteria
 import ai.djl.Application
